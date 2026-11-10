@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Solo se permiten las colecciones que usa la app; cualquier otra queda bloqueada.
+    match /{coleccion}/{documento} {
+      allow read, write: if coleccion in ['users','records','friendreqs','peakreqs','peaks','peaksov'];
+    }
+  }
+}
