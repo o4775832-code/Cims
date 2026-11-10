@@ -121,9 +121,6 @@ rebuild();
 
 const SKEY = "cims-session";
 
-const ADMIN_HASH = "pbkdf2$8hHsL0fzdQGLnfmyXDQEYg==$b3w9xOgDmt4ISn6qw+FCg3no6pvetKamqA4AoEC8K/A=";
-
-
 const saveLocal = () => {
   try {
     if (S.session && S.session.role === "user") {

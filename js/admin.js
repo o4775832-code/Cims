@@ -329,7 +329,7 @@ async function openUser(name, fr) {
     <div class="grid grid-cols-2 gap-2 text-center"><div class="bg-slate-100 rounded-xl p-2"><div class="text-2xl font-bold text-emerald-700">${n}</div><div class="text-xs text-slate-500">cimas</div></div><div class="bg-slate-100 rounded-xl p-2"><div class="text-2xl font-bold text-emerald-700">${Math.min(100,n)}%</div><div class="text-xs text-slate-500">del reto</div></div></div>
     <div class="h-2 bg-slate-200 rounded-full overflow-hidden"><div class="h-full bg-emerald-600" style="width:${Math.min(n,100)}%"></div></div>
     <div class="space-y-2">${rows.map(r=>`<div ${fr&&r.p?`role="button" tabindex="0" data-friend-peak="${r.i}" class="cursor-pointer hover:brightness-105 active:scale-[.99] transition bg-slate-100 rounded-xl p-2 flex gap-2 items-center"`:`class="bg-slate-100 rounded-xl p-2 flex gap-2 items-center"`}>${isImg(r.d.photo)?`<img src="${r.d.photo}" class="w-14 h-14 rounded-lg object-cover">`:""}<div class="min-w-0 flex-1"><div class="font-medium text-sm truncate flex items-center flex-wrap gap-1">${esc(r.p?r.p.name:"Cima #"+r.i)}${r.p&&r.p.alt?" · "+r.p.alt+" m":""} ${r.p?chipEs(r.p):""}</div><div class="text-xs text-slate-500">${esc(r.d.date||"")} · ${r.d.comp&&r.d.comp.length?esc(r.d.comp.join(", ")):"en solitario"}</div>${r.d.notes?`<div class="text-xs text-slate-500 italic">${esc(r.d.notes)}</div>`:""}${fr?"":`<div class="flex gap-3 mt-1">${r.d.photo?`<button data-rph="${r.i}" class="text-xs text-slate-600 underline">Quitar foto</button>`:""}<button data-rdel="${r.i}" class="text-xs text-red-600 font-medium">🗑️ Borrar cima</button></div>`}</div>${fr&&r.p?`<span class="text-slate-500">›</span>`:""}</div>`).join("")||`<p class="text-center text-slate-500 py-2">Todavía no ha registrado ninguna cima.</p>`}</div>
-    ${fr?"":'<div class="flex gap-2"><input id="np" placeholder="Nueva contraseña (mín. 6)" autocomplete="off" class="flex-1 min-w-0 border rounded-lg px-3 py-2 text-sm"><button id="rp" class="px-3 rounded-lg bg-slate-800 text-white text-sm">Restablecer</button></div><button id="du" class="w-full rounded-xl bg-red-50 text-red-600 py-2 text-sm">Eliminar usuario</button>'}`;
+    ${fr?"":(CLOUD?'':'<div class="flex gap-2"><input id="np" placeholder="Nueva contraseña (mín. 6)" autocomplete="off" class="flex-1 min-w-0 border rounded-lg px-3 py-2 text-sm"><button id="rp" class="px-3 rounded-lg bg-slate-800 text-white text-sm">Restablecer</button></div>')+'<button id="du" class="w-full rounded-xl bg-red-50 text-red-600 py-2 text-sm">Eliminar usuario</button>'}`;
 
   if (fr) $('#ub').querySelectorAll('[data-friend-peak]').forEach(row => {
     const open = () => openPeak(+row.dataset.friendPeak, done[row.dataset.friendPeak], true);
@@ -414,6 +414,7 @@ async function openUser(name, fr) {
       USERS = ST.localUsers();
     }
     paintUsers();
+    if (CLOUD) toast("Datos borrados. Para impedir que entre de nuevo, elimina también su cuenta en Firebase → Authentication.", "ok");
   };
 }
 

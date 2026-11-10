@@ -366,9 +366,11 @@ async function enter(u) {
 
   if (CLOUD) DB.doc("users/" + sid(u)).update({ count: nDone() }).catch(() => {});
 
-  try {
-    localStorage.setItem(SKEY, u);
-  } catch (e) {}
+  if (!CLOUD) {
+    try {
+      localStorage.setItem(SKEY, u);
+    } catch (e) {}
+  }
 
   render();
 
@@ -378,7 +380,46 @@ async function enter(u) {
 }
 
 
+/* Tras autenticarse en Firebase: decide si es el admin o un usuario normal.
+   El admin es una cuenta de Authentication cuyo uid figura en el documento admins/<uid>,
+   que solo se puede crear desde la consola de Firebase (las reglas impiden escribirlo desde la app). */
+async function finishAuth(fu) {
+  try {
+    const a = await withTO(DB.doc("admins/" + fu.uid).get());
+
+    if (a.exists) {
+      S.session = { role: "admin" };
+      S.done = {};
+      S.companions = [];
+      S.tab = "admin";
+
+      watchPK();
+      render();
+
+      return true;
+    }
+  } catch (e) {}
+
+  let x = null;
+
+  try {
+    x = await ST.getUser(keyFromEmail(fu.email));
+  } catch (e) {}
+
+  if (!x) {
+    await AUTH.signOut().catch(() => {});
+    return false;
+  }
+
+  await enter(x.username);
+
+  return true;
+}
+
+
 function logout() {
+  if (CLOUD && AUTH) AUTH.signOut().catch(() => {});
+
   if (unsubR) {
     unsubR();
     unsubR = null;
@@ -394,9 +435,11 @@ function logout() {
     unsubPK = null;
   }
 
-  try {
-    localStorage.removeItem(SKEY);
-  } catch (e) {}
+  if (!CLOUD) {
+    try {
+      localStorage.removeItem(SKEY);
+    } catch (e) {}
+  }
 
   S.session = null;
   S.done = {};
@@ -455,19 +498,73 @@ function renderAuth() {
     err("");
 
     try {
-      if (!reg) {
-        if (lk(u) === "admin_07") {
-          if (!(await verifyPw(pw, ADMIN_HASH))) return err("Usuario o contraseña incorrectos.");
+      if (CLOUD) {
+        if (!AUTH) return err("No se pudo cargar la autenticación. Recarga la página.");
 
-          S.session = { role: "admin" };
-          S.done = {};
-          S.companions = [];
-          S.tab = "admin";
+        const email = authEmail(u),
+              BAD = "Usuario o contraseña incorrectos.";
 
-          watchPK();
+        if (!reg) {
+          let fu = null;
 
-          return render();
+          try {
+            fu = (await AUTH.signInWithEmailAndPassword(email, pw)).user;
+          } catch (e) {
+            if (!/^auth\/(user-not-found|wrong-password|invalid-credential|invalid-login-credentials)$/.test(e.code)) throw e;
+
+            /* Cuenta antigua (hash PBKDF2 en Firestore): se migra a Firebase Authentication al entrar */
+            let old = null;
+
+            try {
+              old = await ST.getUser(u);
+            } catch (_) {}
+
+            if (!old || !old.hash || !(await verifyPw(pw, old.hash))) return err(BAD);
+
+            fu = (await AUTH.createUserWithEmailAndPassword(email, pw)).user;
+
+            try {
+              await DB.doc("users/" + sid(u)).update({ hash: firebase.firestore.FieldValue.delete() });
+            } catch (_) {}
+          }
+
+          if (!(await finishAuth(fu))) return err(BAD);
+
+          return;
         }
+
+        if (!/^[\p{L}\p{N}._-]{3,20}$/u.test(u)) return err("Usuario: 3–20 caracteres (letras, números, . _ -).");
+        if (pw.length < 6) return err("La contraseña necesita al menos 6 caracteres.");
+
+        try {
+          if (await ST.getUser(u)) return err("Ese usuario ya existe.");
+        } catch (_) {}
+
+        let fu = null;
+
+        try {
+          fu = (await AUTH.createUserWithEmailAndPassword(email, pw)).user;
+        } catch (e) {
+          if (e.code === "auth/email-already-in-use") return err("Ese usuario ya existe.");
+
+          throw e;
+        }
+
+        try {
+          await ST.createUser({ username: u, date: new Date().toISOString().slice(0, 10) });
+        } catch (e) {
+          await fu.delete().catch(() => {});
+          throw e;
+        }
+
+        await finishAuth(fu);
+
+        return;
+      }
+
+      /* Modo local (sin Firebase): sin administrador, los datos solo viven en este navegador */
+      if (!reg) {
+        if (lk(u) === "admin_07") return err("El administrador solo está disponible con la base de datos en la nube.");
 
         const x = await ST.getUser(u);
 

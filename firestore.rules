@@ -1,9 +1,88 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Solo se permiten las colecciones que usa la app; cualquier otra queda bloqueada.
-    match /{coleccion}/{documento} {
-      allow read, write: if coleccion in ['users','records','friendreqs','peakreqs','peaks','peaksov'];
+
+    // ---------- Funciones ----------
+    function signedIn() {
+      return request.auth != null;
     }
+
+    // Clave del usuario autenticado. Su email es <usuario>@usuarios.reto-100-cims.app
+    // (los '%' del nombre codificado se guardan como '=' porque no son válidos en un email).
+    function meK() {
+      return request.auth.token.email.split('@')[0].replace('=', '%');
+    }
+
+    // El administrador es una cuenta de Authentication cuyo uid tiene un documento en admins/.
+    // Ese documento solo se puede crear desde la consola de Firebase.
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // ---------- admins ----------
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ---------- users ----------
+    match /users/{u} {
+      // TRANSITORIO (migración): una cuenta antigua conserva su campo `hash` hasta que su dueño
+      // entra una vez con la versión nueva. Mientras exista, se puede leer sin sesión para
+      // comprobar la contraseña. Cuando ya no quede ningún `hash`, borra esta línea y la de `list`.
+      allow get: if signedIn() || ('hash' in resource.data);
+      allow list: if signedIn();
+
+      allow create: if signedIn() && u == meK() && !('hash' in request.resource.data);
+      allow update: if signedIn() && (u == meK() || isAdmin());
+      allow delete: if signedIn() && (u == meK() || isAdmin());
+    }
+
+    // ---------- records (id = <usuario>__<idCima>) ----------
+    match /records/{r} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && (
+        isAdmin()
+        || (r.split('__')[0] == meK()
+            // Para nombres con caracteres no ASCII el campo `user` no es comparable en reglas
+            && (meK().matches('.*%.*') || request.resource.data.user == meK()))
+      );
+      allow delete: if signedIn() && (isAdmin() || r.split('__')[0] == meK());
+    }
+
+    // ---------- friendreqs (id = <de>__<a>) ----------
+    match /friendreqs/{f} {
+      allow read: if signedIn();
+      allow create: if signedIn() && f.split('__')[0] == meK();
+      // Solo el destinatario puede aceptar, y únicamente cambiando `accepted`
+      allow update: if signedIn()
+        && f.split('__')[1] == meK()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accepted']);
+      allow delete: if signedIn()
+        && (isAdmin() || f.split('__')[0] == meK() || f.split('__')[1] == meK());
+    }
+
+    // ---------- peakreqs (solicitudes de cima) ----------
+    match /peakreqs/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.status == 'pending'
+        && (meK().matches('.*%.*') || request.resource.data.userK == meK());
+      allow update: if isAdmin();   // aceptar / rechazar
+      allow delete: if isAdmin() || (signedIn() && resource.data.userK == meK());
+    }
+
+    // ---------- catálogo: solo el administrador escribe ----------
+    match /peaks/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /peaksov/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Todo lo demás, bloqueado
   }
 }

@@ -22,6 +22,9 @@ const errMsg = e => {
     : c === "invalid_argument" ? "Tu acceso a este enlace no permite guardar datos. Pide al propietario acceso de colaborador."
     : c === "quota_exceeded" ? "Almacenamiento lleno (¿fotos muy pesadas?). Quita alguna foto."
     : c === "local" ? "Este navegador no permite guardar datos."
+    : c === "permission-denied" ? "No tienes permiso para hacer esto."
+    : c === "auth/too-many-requests" ? "Demasiados intentos. Espera unos minutos."
+    : c === "auth/network-request-failed" ? "No se pudo conectar con la nube. Inténtalo de nuevo."
     : "No se pudo guardar. Inténtalo de nuevo.";
 };
 
@@ -1189,6 +1192,42 @@ function openDelAcc() {
     b.disabled = true;
 
     try {
+      if (CLOUD) {
+        /* Reautenticar con la contraseña, borrar los datos CON la sesión aún abierta y, por último, la cuenta */
+        try {
+          await AUTH.currentUser.reauthenticateWithCredential(
+            firebase.auth.EmailAuthProvider.credential(AUTH.currentUser.email, $("#dpw").value)
+          );
+        } catch (e0) {
+          if (/^auth\/(wrong-password|invalid-credential|invalid-login-credentials)$/.test(e0.code)) {
+            $("#dpe").textContent = t("bad");
+            b.disabled = false;
+            return;
+          }
+
+          throw e0;
+        }
+
+        const mine = S.pk.filter(r => r.userK === me());
+
+        for (const r of mine) await ST.delPeakReq(r.id).catch(() => {});
+
+        try {
+          await ST.delUser(u);
+          await AUTH.currentUser.delete();
+        } catch (e2) {
+          toast(errMsg(e2) + " Tu cuenta no se ha borrado: vuelve a entrar e inténtalo de nuevo.", true);
+          b.disabled = false;
+          return;
+        }
+
+        close();
+        logout();
+        toast(t("gone"), "ok");
+
+        return;
+      }
+
       const x = await ST.getUser(u);
 
       if (!x || !(await verifyPw($("#dpw").value, x.hash))) {
@@ -1260,15 +1299,33 @@ function openChPw() {
     er("");
 
     try {
-      const x = await ST.getUser(S.session.username);
+      if (CLOUD) {
+        try {
+          await AUTH.currentUser.reauthenticateWithCredential(
+            firebase.auth.EmailAuthProvider.credential(AUTH.currentUser.email, $("#cp0").value)
+          );
+        } catch (e0) {
+          if (/^auth\/(wrong-password|invalid-credential|invalid-login-credentials)$/.test(e0.code)) {
+            er(t("bad"));
+            b.disabled = false;
+            return;
+          }
 
-      if (!x || !(await verifyPw($("#cp0").value, x.hash))) {
-        er(t("bad"));
-        b.disabled = false;
-        return;
+          throw e0;
+        }
+
+        await AUTH.currentUser.updatePassword(n1);
+      } else {
+        const x = await ST.getUser(S.session.username);
+
+        if (!x || !(await verifyPw($("#cp0").value, x.hash))) {
+          er(t("bad"));
+          b.disabled = false;
+          return;
+        }
+
+        await ST.setPassword(x.username, await hashNew(n1));
       }
-
-      await ST.setPassword(x.username, await hashNew(n1));
 
       close();
       toast(t("pwOk"), "ok");

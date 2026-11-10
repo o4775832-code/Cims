@@ -46,3 +46,13 @@ const verifyPw = async (t, h) => {
 
   return h === await hash(t);
 };
+
+
+/* ===== Firebase Authentication =====
+   El nombre de usuario se convierte en un email interno (no se envía nada a ese correo).
+   Las contraseñas las gestiona Firebase; la app ya no guarda hashes en Firestore. */
+const AUTH_DOMAIN = "@usuarios.reto-100-cims.app";
+let AUTH = null;
+
+const authEmail = u => sid(u).replace(/%/g, "=") + AUTH_DOMAIN;
+const keyFromEmail = e => decodeURIComponent(String(e).split("@")[0].replace(/=/g, "%"));

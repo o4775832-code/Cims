@@ -82,6 +82,29 @@ async function boot() {
     } catch (e) {}
   }
 
+  if (CLOUD) {
+    /* Sesión en la nube: la gestiona Firebase Authentication (token firmado por Google).
+       Ya no se guarda el nombre de usuario en localStorage. */
+    try {
+      if (firebase.auth) {
+        AUTH = firebase.auth();
+
+        const fu = await new Promise(res => {
+          const off = AUTH.onAuthStateChanged(x => {
+            off();
+            res(x);
+          });
+        });
+
+        if (fu && await finishAuth(fu)) return;
+      }
+    } catch (e) {}
+
+    render();
+    return;
+  }
+
+  /* Modo local (sin Firebase): los datos viven solo en este navegador */
   let u = null;
 
   try {
